@@ -1,0 +1,26 @@
+# Core ML and vision libraries
+torch>=2.0
+torchvision
+transformers
+datasets
+
+# Synthetic data
+faker
+Pillow
+opencv-python
+
+# Utilities
+tqdm
+numpy
+matplotlib
+scikit-learn
+
+# Testing & linting
+pytest
+pytest-cov
+flake8
+black
+isort
+
+# Optional (for CLI/dev tooling)
+# python-dotenv

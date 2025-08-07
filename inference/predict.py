@@ -1,0 +1,1 @@
+# Loads model + processor and performs prediction on new images

@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+*.env
+venv/
+
+# Data
+data/
+*.png
+*.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyTorch
+*.pt
+*.pth
+
+# Hugging Face
+cache/
+*.cache
+*.huggingface
+
+# Logs
+logs/
