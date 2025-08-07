@@ -1,10 +1,11 @@
 # Python
 __pycache__/
 *.py[cod]
-*.egg-info/
 .env
 *.env
 venv/
+# Metadata from packaging tools
+*.egg-info/
 
 # Data
 data/

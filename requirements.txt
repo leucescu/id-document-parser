@@ -3,11 +3,14 @@ torch>=2.0
 torchvision
 transformers
 datasets
+hf_xet
 
 # Synthetic data
 faker
 Pillow
 opencv-python
+# Augmentations (rotate, blur, etc.)
+albumentations
 
 # Utilities
 tqdm
@@ -21,6 +24,7 @@ pytest-cov
 flake8
 black
 isort
+
 
 # Optional (for CLI/dev tooling)
 # python-dotenv
