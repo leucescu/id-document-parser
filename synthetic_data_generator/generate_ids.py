@@ -38,7 +38,7 @@ class Synthetic_Data:
             # Load dataset from HuggingFace
             print("Loading dataset...")
             dtd = load_dataset(
-                "cansa/Describable-Textures-Dataset-DTD", 
+                "dream-textures/textures-color-1k", 
                 split="train"
             )
 
@@ -83,42 +83,6 @@ class Synthetic_Data:
             print(f"Error: {e}")
             raise
 
-    # @staticmethod
-    # def add_background_with_mask(id_img, backgrounds_folder):
-    #     # Load random background
-    #     bg_files = [f for f in os.listdir(backgrounds_folder) if f.lower().endswith(('.jpg', '.png'))]
-    #     bg_path = os.path.join(backgrounds_folder, random.choice(bg_files))
-    #     background = Image.open(bg_path).convert("RGB")
-
-    #     # Resize background to fixed size (you can make this a class variable if needed)
-    #     bg = background.resize((512, 256))
-    #     id_img = id_img.convert("RGB")  # Just to be sure
-
-    #     # Resize ID to be slightly smaller than background
-    #     id_img = id_img.resize((400, 200))
-    #     id_np = np.array(id_img)
-    #     bg_np = np.array(bg)
-
-    #     # Center position
-    #     bg_w, bg_h = bg.size
-    #     id_w, id_h = id_img.size
-    #     x = (bg_w - id_w) // 2
-    #     y = (bg_h - id_h) // 2
-
-    #     # Extract region of interest from background
-    #     roi = bg_np[y:y+id_h, x:x+id_w]
-
-    #     # White mask (all-white pixels)
-    #     white_mask = np.all(id_np >= 255, axis=-1)
-
-    #     # Composite: keep background in white areas, overlay text from ID
-    #     roi[~white_mask] = id_np[~white_mask]
-
-    #     # Put ROI back into background
-    #     bg_np[y:y+id_h, x:x+id_w] = roi
-
-    #     return Image.fromarray(bg_np)
-
     def draw_face_on_id(self, id_img, face_size=(120, 120), position=None):
         """
         Draw a random face image from the saved face directory onto the given ID card image.
@@ -158,19 +122,68 @@ class Synthetic_Data:
         return id_img
 
     @staticmethod
-    def apply_augmentations(pil_img):
-        """ Method used to make position and orientation of an ID card more realistic by applying space transformations."""
+    def paste_id_on_background_with_padding(background, id_card):
+        # Ensure both are RGBA
+        if id_card.mode != 'RGBA':
+            id_card = id_card.convert('RGBA')
+        if background.mode != 'RGBA':
+            background = background.convert('RGBA')
 
-        img_np = np.array(pil_img)
+        bg_w, bg_h = background.size
+        id_w, id_h = id_card.size
+
+        # Calculate new size to fully contain both
+        new_w = max(bg_w, id_w)
+        new_h = max(bg_h, id_h)
+
+        # If background is smaller than new size, resize/stretch it to fill new size
+        if bg_w != new_w or bg_h != new_h:
+            background = background.resize((new_w, new_h), resample=Image.BICUBIC)
+
+        # Create a new blank RGBA canvas
+        new_bg = Image.new('RGBA', (new_w, new_h), (255, 255, 255, 255))
+
+        # Paste resized background at (0,0) — fills whole new canvas
+        new_bg.paste(background, (0, 0))
+
+        # Paste ID card centered over the new background, preserving transparency mask
+        id_x = (new_w - id_w) // 2
+        id_y = (new_h - id_h) // 2
+        new_bg.paste(id_card, (id_x, id_y), id_card)
+
+        return new_bg
+
+    @staticmethod
+    def apply_perspective_transform(pil_img):
+        pil_img = pil_img.convert("RGBA")
+        w, h = pil_img.size
+
+        max_shift = int(min(w, h) * 0.1)
+
+        src = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32)
+        dst = src + np.random.uniform(-max_shift, max_shift, size=src.shape).astype(np.float32)
+
+        return Synthetic_Data.perspective_transform_rgba(pil_img, src, dst)
+
+
+    @staticmethod
+    def apply_color_augmentations(pil_img):
+        pil_img = pil_img.convert("RGBA")
+        img_np = np.array(pil_img.convert("RGB"))
+
         transform = A.Compose([
-            # A.Rotate(limit=10, p=0.8, border_mode=cv2.BORDER_CONSTANT, value=(255,255,255)),
             A.RandomBrightnessContrast(p=0.5),
             A.MotionBlur(blur_limit=5, p=0.3),
-            A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
-            A.Perspective(scale=(0.05, 0.1), p=0.7),
+            A.GaussNoise(var_limit=(5, 20), p=0.15),
         ])
+
         augmented = transform(image=img_np)["image"]
-        return Image.fromarray(augmented)
+
+        alpha_channel = pil_img.split()[-1]
+        augmented_img = Image.fromarray(augmented).convert("RGBA")
+        augmented_img.putalpha(alpha_channel)
+
+        return augmented_img
 
     @staticmethod
     def apply_texture_base(image, texture_folder):
@@ -214,10 +227,69 @@ class Synthetic_Data:
         # Create a copy of background to paste on
         composite = background.copy()
         
-        # Paste rotated id_card on background using alpha channel as mask
-        composite.paste(rotated_id, (x, y), rotated_id)
+        composite = Synthetic_Data.paste_id_on_background_with_padding(background, rotated_id)
+
+        # # Optionally resize final_composite back to (512, 256)
+        # final_resized = composite.resize((512, 256), resample=Image.BICUBIC)
     
         return composite.convert('RGB')  # Convert back to RGB
+    
+    @staticmethod
+    def perspective_transform_rgba(pil_img, src_points, dst_points):
+        """
+        Apply perspective transform on RGBA image without cropping by calculating
+        the bounding box of the warped image and translating accordingly.
+
+        Args:
+            pil_img (PIL.Image): Input RGBA image.
+            src_points (np.array): Source points for perspective transform (4 points).
+            dst_points (np.array): Destination points (4 points).
+
+        Returns:
+            PIL.Image: Transformed image with transparency preserved.
+        """
+
+        img_np = np.array(pil_img)
+        h, w = img_np.shape[:2]
+
+        # Compute perspective transform matrix
+        M = cv2.getPerspectiveTransform(np.float32(src_points), np.float32(dst_points))
+
+        # Transform the corners to find bounding box
+        corners = np.array([
+            [0, 0],
+            [w, 0],
+            [w, h],
+            [0, h]
+        ], dtype=np.float32).reshape(-1, 1, 2)
+
+        warped_corners = cv2.perspectiveTransform(corners, M).reshape(-1, 2)
+
+        # Find bounding box of warped corners
+        min_x = np.min(warped_corners[:, 0])
+        min_y = np.min(warped_corners[:, 1])
+        max_x = np.max(warped_corners[:, 0])
+        max_y = np.max(warped_corners[:, 1])
+
+        new_w = int(np.ceil(max_x - min_x))
+        new_h = int(np.ceil(max_y - min_y))
+
+        # Translation matrix to shift image so all pixels are positive
+        translation = np.array([
+            [1, 0, -min_x],
+            [0, 1, -min_y],
+            [0, 0, 1]
+        ])
+
+        # Combine translation with perspective transform
+        M_translated = translation @ M
+
+        # Warp image with combined matrix and new size
+        warped = cv2.warpPerspective(img_np, M_translated, (new_w, new_h),
+                                    borderMode=cv2.BORDER_CONSTANT,
+                                    borderValue=(0, 0, 0, 0))  # transparent background
+
+        return Image.fromarray(warped)
 
     @staticmethod
     def expand_canvas(image, padding=100, background=(255, 255, 255)):
@@ -263,8 +335,8 @@ class Synthetic_Data:
         draw.text((20, 100), f"ID: {id_number}", fill="black", font=font)
         draw.text((20, 140), f"Expiry: {expiry}", fill="black", font=font)
 
-        # id_card = Synthetic_Data.expand_canvas(textured_id, padding=400, background=(255,255,255,0))  # transparent background
-        augmented_id = Synthetic_Data.apply_augmentations(textured_id.convert("RGB")).convert("RGBA")
+        # Apply perspective transform first
+        perspective_img = Synthetic_Data.apply_perspective_transform(textured_id)
 
         # For demo: pick a random rotation angle, e.g. -10 to +10 degrees
         angle = random.uniform(-30, 30)
@@ -275,7 +347,10 @@ class Synthetic_Data:
         background = Image.open(bg_path).convert("RGBA").resize((512, 256))
 
         # Rotate the augmented ID card and composite it over background
-        final_image = Synthetic_Data.rotate_id_over_background(background, augmented_id, angle)
+        rotated_image = Synthetic_Data.rotate_id_over_background(background, perspective_img, angle)
+
+        # Then apply color augmentations on the warped image
+        final_image = Synthetic_Data.apply_color_augmentations(rotated_image)
 
         # Save image and label
         img_path = os.path.join(save_dir, f"id_{idx:04d}.png")
@@ -298,8 +373,8 @@ class Synthetic_Data:
 
 def main ():
     synthetic_data = Synthetic_Data()
-    # synthetic_data.create_background_images()
-    # synthetic_data.create_synthetic_face_images()
+    synthetic_data.create_background_images()
+    synthetic_data.create_synthetic_face_images()
     synthetic_data.create_training_data()
     synthetic_data.create_validation_data()
 
