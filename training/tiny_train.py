@@ -1,15 +1,15 @@
 import os
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 from torch.optim import AdamW
 from tqdm import tqdm
 import wandb
 
-from training.config import TrainingConfig
-from training.dataset import IDDataset, collate_fn
-from training.metrics import calculate_token_accuracy, calculate_sequence_accuracy, calculate_average_edit_distance
+from .config import TrainingConfig
+from .dataset import IDDataset, collate_fn
+from .metrics import calculate_token_accuracy, calculate_sequence_accuracy, calculate_average_edit_distance
 
 def freeze_and_unfreeze_layers(model):
     for param in model.parameters():
@@ -33,8 +33,8 @@ def freeze_and_unfreeze_layers(model):
     for param in model.decoder.model.decoder.embed_tokens.parameters():
         param.requires_grad = True
 
-def train():
-    wandb.init(project="ID_document_parser")
+def train_tiny_subset():
+    wandb.init(project="ID_document_parser_tiny_trial")
 
     processor = DonutProcessor.from_pretrained(TrainingConfig.MODEL_NAME)
     model = VisionEncoderDecoderModel.from_pretrained(TrainingConfig.MODEL_NAME)
@@ -47,18 +47,23 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    train_dataset = IDDataset(TrainingConfig.TRAIN_DIR, processor)
-    val_dataset = IDDataset(TrainingConfig.VAL_DIR, processor)
+    full_train_dataset = IDDataset(TrainingConfig.TRAIN_DIR, processor)
+    full_val_dataset = IDDataset(TrainingConfig.VAL_DIR, processor)
 
-    train_loader = DataLoader(train_dataset, batch_size=TrainingConfig.BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=TrainingConfig.BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+    # Use only first 5 samples for quick trial run
+    tiny_train_dataset = Subset(full_train_dataset, list(range(min(5, len(full_train_dataset)))))
+    tiny_val_dataset = Subset(full_val_dataset, list(range(min(5, len(full_val_dataset)))))
+
+    train_loader = DataLoader(tiny_train_dataset, batch_size=2, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(tiny_val_dataset, batch_size=2, shuffle=False, collate_fn=collate_fn)
 
     optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=TrainingConfig.LEARNING_RATE)
 
-    for epoch in range(TrainingConfig.MAX_EPOCHS):
+    # Just 1 epoch for trial
+    for epoch in range(1):
         model.train()
         train_loss = 0
-        for batch in tqdm(train_loader, desc=f"Training Epoch {epoch+1}"):
+        for batch in tqdm(train_loader, desc="Training (tiny subset)"):
             pixel_values = batch["pixel_values"].to(device)
             labels = batch["labels"].to(device)
 
@@ -130,10 +135,5 @@ def train():
             "val_low_confidence_rate": low_confidence_rate,
         })
 
-        checkpoint_path = os.path.join(TrainingConfig.CHECKPOINT_DIR, f"epoch_{epoch+1}")
-        os.makedirs(checkpoint_path, exist_ok=True)
-        model.save_pretrained(checkpoint_path)
-        processor.save_pretrained(checkpoint_path)
-
 if __name__ == "__main__":
-    train()
+    train_tiny_subset()

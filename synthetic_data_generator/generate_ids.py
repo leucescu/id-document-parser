@@ -25,12 +25,12 @@ class Synthetic_Data:
         self.save_face_dir = "data/faces"
 
         # Size defined as number of generated images
-        self.training_data_size = 10
-        self.validation_data_size = 10
+        self.training_data_size = 4000
+        self.validation_data_size = 1000
 
         # Number of images that will be used for generating background
-        self.background_data_size = 50
-        self.face_data_size = 150
+        self.background_data_size = 200
+        self.face_data_size = 500
 
     def create_background_images(self):
         """Download and save background images from the DTD dataset."""
@@ -217,12 +217,6 @@ class Synthetic_Data:
         # Rotate id_card with transparent fill, expand canvas
         rotated_id = id_card.rotate(angle, resample=Image.BICUBIC, expand=True, fillcolor=(0,0,0,0))
         
-        # Compute position to paste rotated ID onto background (centered)
-        bg_w, bg_h = background.size
-        id_w, id_h = rotated_id.size
-        
-        x = (bg_w - id_w) // 2
-        y = (bg_h - id_h) // 2
         
         # Create a copy of background to paste on
         composite = background.copy()

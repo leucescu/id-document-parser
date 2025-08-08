@@ -1,30 +1,22 @@
-# Core ML and vision libraries
-torch>=2.0
+torch==2.8.0
 torchvision
 transformers
 datasets
 hf_xet
-
-# Synthetic data
+sentencepiece
 faker
 Pillow
 opencv-python
-# Augmentations (rotate, blur, etc.)
 albumentations
-
-# Utilities
 tqdm
 numpy
 matplotlib
 scikit-learn
-
-# Testing & linting
 pytest
 pytest-cov
 flake8
 black
 isort
-
-
-# Optional (for CLI/dev tooling)
-# python-dotenv
+wandb
+protobuf
+Levenshtein
