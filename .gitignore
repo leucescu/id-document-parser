@@ -30,3 +30,4 @@ logs/
 wandb/
 
 checkpoints/
+previous_trained_models/

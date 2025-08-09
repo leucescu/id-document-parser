@@ -25,8 +25,8 @@ class Synthetic_Data:
         self.save_face_dir = "data/faces"
 
         # Size defined as number of generated images
-        self.training_data_size = 4000
-        self.validation_data_size = 1000
+        self.training_data_size = 8000
+        self.validation_data_size = 2000
 
         # Number of images that will be used for generating background
         self.background_data_size = 200
